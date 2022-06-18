@@ -1,0 +1,70 @@
+  ResourcePolicyLambda:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Handler: "index.handler"
+      Role:
+        Fn::GetAtt:
+          - "LambdaExecutionRole"
+          - "Arn"
+      Runtime: "python3.6"
+      Code:
+        ZipFile: |
+          import json
+          import cfnresponse
+          import boto3
+          from botocore.exceptions import ClientError
+
+          client = boto3.client("logs")
+
+          def PutPolicy(arns, policyname, service):
+            arn_str = '","'.join(arns)
+            arn = "[\"" + arn_str + "\"]"
+
+            response = client.put_resource_policy(
+              policyName=policyname,
+              policyDocument="{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"" + service + "\"},\"Action\":[\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Resource\":"+ arn + "}]}",
+            )
+            return
+
+          def DeletePolicy(policyname):
+            response = client.delete_resource_policy(
+              policyName=policyname
+            )
+            return
+
+          def handler(event, context):
+            CloudWatchLogsLogGroupArns = event['ResourceProperties']['CloudWatchLogsLogGroupArn']
+            PolicyName = event['ResourceProperties']['PolicyName']
+            ServiceName = event['ResourceProperties']['ServiceName']
+
+            responseData = {}
+
+            try:
+              if event['RequestType'] == "Delete":
+                DeletePolicy(PolicyName)
+              if event['RequestType'] in ["Create", "Update"]:
+                PutPolicy(CloudWatchLogsLogGroupArns, PolicyName, ServiceName)
+              responseData['Data'] = "SUCCESS"
+              status=cfnresponse.SUCCESS
+            except ClientError as e:
+              responseData['Data'] = "FAILED"
+              status=cfnresponse.FAILED
+              print("Unexpected error: %s" % e)
+
+            cfnresponse.send(event, context, status, responseData, "CustomResourcePhysicalID")
+
+  EventsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/events/TestEvents
+      RetentionInDays: 90
+
+  AddResourcePolicyForEventsToLogs:
+    Type: Custom::AddResourcePolicy
+    Version: "1.0"
+    Properties:
+      ServiceToken: !GetAtt ResourcePolicyLambda.Arn
+      CloudWatchLogsLogGroupArn:
+        - !GetAtt EventsLogGroup.Arn
+      PolicyName: "TestEventsPolicy"
+      ServiceName: "events.amazonaws.com"

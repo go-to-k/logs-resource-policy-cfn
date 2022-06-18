@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Metadata:
+  "AWS::CloudFormation::Interface":
+    ParameterGroups:
+      - Label:
+          default: "CloudWatch Logs LogGroup Arn"
+        Parameters:
+          - CloudWatchLogsLogGroupArn
+
+Parameters:
+  CloudWatchLogsLogGroupArn:
+    Type: String
+
+Resources:
+  EventBridgeToCWLogsPolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Properties:
+      PolicyName: EventBridgeToCWLogsPolicy
+      PolicyDocument: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "events.amazonaws.com"
+              },
+              "Action": [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": "${CloudWatchLogsLogGroupArn}"
+            }
+          ]
+        }
